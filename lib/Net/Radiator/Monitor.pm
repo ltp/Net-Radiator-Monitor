@@ -7,7 +7,7 @@ use IO::Socket::INET;
 use IO::Select;
 use Carp qw(croak);
 
-our $VERSION = '0.01';
+our $VERSION = '0.021';
 our %METHODS = (
 		server_stats	=> {	cmd => 'STATS',
 					args=> '.',
@@ -41,8 +41,8 @@ sub new {
 	$self->{user}	= $args{user};
 	$self->{passwd}	= $args{passwd};
 	$self->{server}	= (defined $args{server} ? $args{server} : croak 'Constructor failed: no server supplied');
-	$self->{port}	= $args{port} // 9084;
-	$self->{timeout}= $args{timeout} // 5;
+	$self->{port}   = $args{port} ||= 9048;
+	$self->{timeout}= $args{timeout} ||= 5;
 	$self->{sock}= IO::Socket::INET->new(	PeerAddr	=> $self->{server},
 						PeerPort	=> $self->{port},
 						Proto		=> 'tcp',
