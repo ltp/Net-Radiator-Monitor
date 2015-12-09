@@ -9,53 +9,30 @@ use Carp qw(croak);
 
 our $VERSION = '0.021';
 our %METHODS = (
-		server_stats	=> {	cmd => 'STATS',
-					args=> '.',
-					ml  => 1
-				},
-		client_stats	=> {
-					cmd => 'STATS',
-					args=> '".Client." . $_[0]',
-					evl => 1,
-					ml  => 1
-				},
-		list_clients	=> {	cmd => 'LIST',
-					args=> 'Client',
-					ml  => 1
-				},
-		list_realms	=> {	cmd => 'LIST',
-					args=> 'Realm',
-					ml  => 1
-				},
-		list_handlers	=> {
-					cmd => 'LIST',
-					args=> 'Handler',
-					ml  => 1
-				}
-	);
-
-sub new {
-	my ($class,%args)= @_;
-	my $self	= {};
-	bless $self, $class;
-	$self->{user}	= $args{user};
-	$self->{passwd}	= $args{passwd};
-	$self->{server}	= (defined $args{server} ? $args{server} : croak 'Constructor failed: no server supplied');
-	$self->{port}   = $args{port} ||= 9048;
-	$self->{timeout}= $args{timeout} ||= 5;
-	$self->{sock}= IO::Socket::INET->new(	PeerAddr	=> $self->{server},
-						PeerPort	=> $self->{port},
-						Proto		=> 'tcp',
-						Timeout		=> $self->{timeout}
-				) or croak "Can't establish connection to server $args{server} on port $args{port}: $!\n";
-
-	$self->{sel}= IO::Select->new($self->{sock});
-	
-	my @login = $self->_cmd(cmd => 'LOGIN', args => " $self->{user} $self->{passwd}");
-	return ( $login[0] eq 'LOGGEDIN' 
-		? $self
-		: do { 	print "Failed to log in: $login[0]\n"; return 0 } )
-}
+	server_stats	=> {	cmd => 'STATS',
+				args=> '.',
+				ml  => 1
+			},
+	client_stats	=> {
+				cmd => 'STATS',
+				args=> '".Client." . $_[0]',
+				evl => 1,
+				ml  => 1
+			},
+	list_clients	=> {	cmd => 'LIST',
+				args=> 'Client',
+				ml  => 1
+			},
+	list_realms	=> {	cmd => 'LIST',
+				args=> 'Realm',
+				ml  => 1
+			},
+	list_handlers	=> {
+				cmd => 'LIST',
+				args=> 'Handler',
+				ml  => 1
+			}
+);
 
 {
 	no strict 'refs';
@@ -66,9 +43,18 @@ sub new {
 			my %res;
 			my ($c1,$c2) = ($m =~ /^list/ ? (0,2) : (0,1));
 			
-			foreach my $line ($self->_cmd(cmd => $METHODS{$m}{cmd}, args => ($METHODS{$m}{evl} ? eval $METHODS{$m}{args} : $METHODS{$m}{args}), ml => $METHODS{$m}{ml})) {
-				my ($var,$val)	= (split /:/, $line)[$c1,$c2];
-				$res{$var} = $val || 0;
+			foreach my $line ( 
+				$self->_cmd(
+					cmd  => $METHODS{$m}{cmd},
+					args => ( $METHODS{$m}{evl}
+							? eval $METHODS{$m}{args}
+							: $METHODS{$m}{args}
+						),
+					ml   => $METHODS{$m}{ml}
+					)
+			) {
+				my ($var,$val) = (split /:/, $line)[$c1,$c2];
+				$res{$var}     = $val || 0;
 			}
 			
 			return %res
@@ -76,30 +62,74 @@ sub new {
 	}
 }
 
-sub quit{ $_[0]->{sock}->send('QUIT') and $_[0]->{sock}->close }
+sub new {
+	my ( $class, %args ) = @_;
 
-sub id 	{ return $_[0]->_cmd(cmd => 'ID', args => '') }
+	my $self        = {};
+	bless $self, $class;
+	$self->{user}	= $args{user};
+	$self->{passwd}	= $args{passwd};
+	$self->{server}	= ( defined $args{server} 
+				? $args{server} 
+				: croak 'Constructor failed: no server supplied'
+			);
+	$self->{port}   = $args{port}    ||= 9048;
+	$self->{timeout}= $args{timeout} ||= 5;
+
+	$self->{sock}   = IO::Socket::INET->new(
+						PeerAddr => $self->{server},
+						PeerPort => $self->{port},
+						Proto	 => 'tcp',
+						Timeout	 => $self->{timeout}
+				) or croak "Can't establish connection to server "
+					."$args{server} on port $args{port}: $!\n";
+
+	$self->{sel}	= IO::Select->new( $self->{sock} );
+	
+	my @login	= $self->_cmd(
+					cmd  => 'LOGIN', 
+					args => " $self->{user} $self->{passwd}"
+				);
+
+	return ( $login[0] eq 'LOGGEDIN' 
+		? $self
+		: do { 	print "Failed to log in: $login[0]\n"; return 0 } )
+}
+
+sub quit{ 
+	$_[0]->{sock}->send( 'QUIT' ) and $_[0]->{sock}->close
+}
+
+sub id 	{ 
+	return $_[0]->_cmd( cmd => 'ID', args => '' )
+}
 
 sub _trace {
 	my ($self,$level) = @_;
-	return $_[0]->_cmd(cmd => 'ID', args => '')
+
+	return $_[0]->_cmd( cmd => 'ID', args => '' )
 }
 
 sub _cmd {
 	my ($self,%args) = @_;
-	my $buf;
-	$self->{sock}->send("$args{cmd} $args{args}\n");
 
-	if ($self->{sel}->can_read($self->{timeout})) {
-		$self->{sock}->recv($buf, 10240);
+	my $buf;
+	$self->{sock}->send( "$args{cmd} $args{args}\n" );
+
+	if ( $self->{sel}->can_read( $self->{timeout} ) ) {
+		$self->{sock}->recv( $buf, 10240 );
 		chomp $buf;
 		my @r = split '\001', $buf;
 		shift @r if ( $args{ml} and ( scalar @r > 1 ) );
+
 		return @r;
 	}
 
 	return
 }
+
+1;
+__END__
 
 =head1 NAME
 
@@ -138,15 +168,15 @@ This module provides a Perl interface to Radiator Monitor command language.
 					);
   
 
-Constructor - creates a new Net::Radiator::Monitor object using the specified parameters.  This method
-takes three mandatory and two optional parameters.
+Constructor - creates a new Net::Radiator::Monitor object using the specified 
+parameters.  This method takes three mandatory and two optional parameters.
 
 =over 4 
 
 =item user
 
-The username to use to connect to the monitor interface.  This username must have the required
-access to connect to the monitor.
+The username to use to connect to the monitor interface.  This username must 
+have the required access to connect to the monitor.
 
 =item passwd
 
@@ -154,17 +184,20 @@ The password for the username use to connect to the monitor interface.
 
 =item server
 
-The server to connect to - this should be either a resolvable hostname or an IP address.
+The server to connect to - this should be either a resolvable hostname or an 
+IP address.
 
 =item port
 
-The port on which to connect to the monitor interface - this parameter is optional and if
-not specified will default to the Radiator default port of 9084.
+The port on which to connect to the monitor interface - this parameter is 
+optional and if not specified will default to the Radiator default port of 
+9084.
 
 =item timeout
 
-The connection timeout value and recieve timeout value for the connection to the Radiator 
-server - this parameter is optional and if not specified will default to five seconds.
+The connection timeout value and recieve timeout value for the connection to 
+the Radiator server - this parameter is optional and if not specified will 
+default to five seconds.
 
 =back
 
@@ -240,8 +273,8 @@ The measured statistics (and the keys of the hash) are:
   my %client_stats = $monitor->client_stats($client_id);
   
 Returns a hash containing name,value pairs of collected statistics for client
-specified by the value of the client id.  The available statistics are the same 
-as those listed for the B<server_stats> method.
+specified by the value of the client id.  The available statistics are the 
+same as those listed for the B<server_stats> method.
 
 The B<list_clients> method can be sed to retrieve valid client IDs.
 
@@ -251,18 +284,19 @@ The B<list_clients> method can be sed to retrieve valid client IDs.
     print "Client : $name - ID : $id\n"
   }
 
-Returns a hash containing all configured clients where the key is the numerical identifier 
-for the realm and the value is the client name or IP address (dependent on configuration).
+Returns a hash containing all configured clients where the key is the 
+numerical identifier for the realm and the value is the client name or IP 
+address (dependent on configuration).
 
 =head2 list_realms
 
-Returns a hash containing all configured realms where the key is the numerical identifier 
-for the realm and the value is the realm name.
+Returns a hash containing all configured realms where the key is the numerical 
+identifier for the realm and the value is the realm name.
 
 =head2 list_handlers
 
-Returns a hash containing all configured handlers where the key is the numerical identifier 
-for the handler and the value is the handler name.
+Returns a hash containing all configured handlers where the key is the 
+numerical identifier for the handler and the value is the handler name.
 
 =head1 AUTHOR
 
@@ -270,19 +304,17 @@ Luke Poskitt, C<< <ltp at cpan.org> >>
 
 =head1 BUGS
 
-Please report any bugs or feature requests to C<bug-net-radiator-monitor at rt.cpan.org>, or through
-the web interface at L<http://rt.cpan.org/NoAuth/ReportBug.html?Queue=Net-Radiator-Monitor>.  I will be notified, and then you'll
-automatically be notified of progress on your bug as I make changes.
-
-
-
+Please report any bugs or feature requests to 
+C<bug-net-radiator-monitor at rt.cpan.org>, or through the web interface at 
+L<http://rt.cpan.org/NoAuth/ReportBug.html?Queue=Net-Radiator-Monitor>.  I 
+will be notified, and then you'll automatically be notified of progress on 
+your bug as I make changes.
 
 =head1 SUPPORT
 
 You can find documentation for this module with the perldoc command.
 
     perldoc Net::Radiator::Monitor
-
 
 You can also look for information at:
 
@@ -306,10 +338,6 @@ L<http://search.cpan.org/dist/Net-Radiator-Monitor/>
 
 =back
 
-
-=head1 ACKNOWLEDGEMENTS
-
-
 =head1 LICENSE AND COPYRIGHT
 
 Copyright 2012 Luke Poskitt.
@@ -320,7 +348,4 @@ by the Free Software Foundation; or the Artistic License.
 
 See http://dev.perl.org/licenses/ for more information.
 
-
 =cut
-
-1;
